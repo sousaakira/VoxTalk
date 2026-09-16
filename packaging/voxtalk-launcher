@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Launcher instalado em /usr/bin/voxtalk
+export PYTHONPATH="/opt/voxtalk${PYTHONPATH:+:$PYTHONPATH}"
+exec /opt/voxtalk/venv/bin/python -m voxtalk "$@"

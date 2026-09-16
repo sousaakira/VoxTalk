@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voxtalk"
+version = "0.2.1"
+description = "Ditado por voz desktop — Parakeet local (Orca) + OpenAI opcional"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "sounddevice>=0.4.6",
+  "numpy>=1.24.0",
+  "pynput>=1.7.6",
+  "PyQt5>=5.15.0",
+  "pyperclip>=1.8.2",
+  "sherpa-onnx>=1.10.0",
+]
+
+[project.scripts]
+voxtalk = "voxtalk.app:run"
+
+[tool.setuptools.packages.find]
+include = ["voxtalk*"]

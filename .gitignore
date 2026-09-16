@@ -1,0 +1,14 @@
+dist/
+packaging/stage/
+*.deb
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+build/
+.whisper/
+*.wav
+.DS_Store

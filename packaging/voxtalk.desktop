@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=VoxTalk
+GenericName=Ditado por voz
+Comment=Grave com F9 e transcreva fala em texto
+Exec=voxtalk
+Icon=voxtalk
+Terminal=false
+Categories=Utility;AudioVideo;Office;
+Keywords=voice;dictation;speech;mic;transcrever;
+StartupNotify=true
