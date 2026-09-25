@@ -7,6 +7,7 @@ from typing import Callable, Optional
 
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from PyQt5.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -20,6 +21,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
 )
 
+from . import gnome_shortcut
 from .model_catalog import PARAKEET_DESCRIPTION, PARAKEET_LABEL, PARAKEET_TOTAL_BYTES
 from .model_manager import ensure_parakeet, model_ready, model_status_label
 from .settings import AppSettings, OpenAiModel, save_settings
@@ -88,6 +90,31 @@ class SettingsDialog(QDialog):
         self.api_key.setText(self._settings.openai_api_key)
         self.api_key.setPlaceholderText("sk-…")
         form.addRow("Chave OpenAI:", self.api_key)
+
+        self.insert_check = QCheckBox("Inserir o texto no app em foco")
+        self.insert_check.setChecked(self._settings.insert_into_focused)
+        form.addRow("Saída:", self.insert_check)
+
+        self.paste_combo = QComboBox()
+        self.paste_combo.addItem("Ctrl+V", "ctrl+v")
+        self.paste_combo.addItem("Ctrl+Shift+V (terminais)", "ctrl+shift+v")
+        pidx = self.paste_combo.findData(self._settings.paste_combo)
+        self.paste_combo.setCurrentIndex(max(0, pidx))
+        self.insert_check.toggled.connect(self.paste_combo.setEnabled)
+        self.paste_combo.setEnabled(self._settings.insert_into_focused)
+        form.addRow("Colar com:", self.paste_combo)
+
+        on_gnome = gnome_shortcut.is_gnome()
+        self.gnome_check = QCheckBox("Registrar atalho global no GNOME")
+        self.gnome_check.setChecked(self._settings.gnome_shortcut)
+        self.gnome_check.setEnabled(on_gnome)
+        form.addRow("Atalho:", self.gnome_check)
+
+        self.shortcut_edit = QLineEdit(self._settings.shortcut)
+        self.shortcut_edit.setPlaceholderText("F9, <Super>h, <Ctrl><Alt>space…")
+        self.shortcut_edit.setEnabled(on_gnome and self._settings.gnome_shortcut)
+        self.gnome_check.toggled.connect(self.shortcut_edit.setEnabled)
+        form.addRow("Tecla (GNOME):", self.shortcut_edit)
 
         layout.addLayout(form)
 
@@ -160,6 +187,10 @@ class SettingsDialog(QDialog):
             language=self._settings.language,
             auto_copy=self._settings.auto_copy,
             models_dir=self._settings.models_dir,
+            insert_into_focused=self.insert_check.isChecked(),
+            paste_combo=self.paste_combo.currentData(),
+            shortcut=self.shortcut_edit.text().strip() or "F9",
+            gnome_shortcut=self.gnome_check.isChecked(),
         )
 
     def _save(self) -> None:

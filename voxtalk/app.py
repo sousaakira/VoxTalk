@@ -27,11 +27,13 @@ from PyQt5.QtWidgets import (
 )
 
 from .bubble import RecordingBubble
-from .hotkey import GlobalHotkey, hotkey_label
+from . import gnome_shortcut
+from .ipc import InstanceServer, default_socket_path, send_command
 from .model_manager import ensure_parakeet, model_ready
 from .recorder import MicrophoneRecorder
 from .settings import AppSettings, load_settings, save_settings
 from .settings_dialog import SettingsDialog
+from .text_injector import InjectionUnavailable, TextInjector
 from .transcriber import ENGINE_LABELS, LANGUAGES, HybridTranscriber
 
 
@@ -42,7 +44,9 @@ class WorkerBus(QObject):
     transcript = pyqtSignal(str, str)  # text, language
     error = pyqtSignal(str)
     recording_level = pyqtSignal(float)
-    hotkey_toggle = pyqtSignal()  # pynput → thread principal
+    hotkey_toggle = pyqtSignal()  # pynput / socket → thread principal
+    show_window = pyqtSignal()
+    injected = pyqtSignal(bool, str)  # ok, mensagem
 
 
 
@@ -72,7 +76,10 @@ class MainWindow(QMainWindow):
         self.transcriber = HybridTranscriber()
         self.settings: AppSettings = load_settings()
         self.bus = WorkerBus(self)  # afinidade = thread da UI
-        self._hotkey: Optional[GlobalHotkey] = None
+        self._hotkey = None  # GlobalHotkey (pynput), só fora do GNOME
+        self._pynput_label = ""
+        self._injector = TextInjector()
+        self._inject_warned = False
         self._busy = False
         self._preparing_model = False
 
@@ -81,7 +88,6 @@ class MainWindow(QMainWindow):
         self._setup_tray()
         self._setup_bubble()
         self._apply_theme()
-        self._apply_settings_to_ui()
 
         self._level_timer = QTimer(self)
         self._level_timer.setInterval(80)
@@ -91,17 +97,53 @@ class MainWindow(QMainWindow):
         self._bubble_hide_timer.setSingleShot(True)
         self._bubble_hide_timer.timeout.connect(self.bubble.fade_out)
 
+        self._setup_global_shortcut()
+        self._apply_settings_to_ui()
         self._emit_ready_status()
-
-        # pynput roda em outra thread — NUNCA chamar Qt direto dali
-        self._hotkey = GlobalHotkey(on_trigger=self._on_hotkey_from_listener)
-        self._hotkey.start()
 
         QTimer.singleShot(400, self._maybe_prompt_model_download)
 
     def _on_hotkey_from_listener(self) -> None:
         """Callback do pynput (thread estranha) → sinal Qt na UI."""
         self.bus.hotkey_toggle.emit()
+
+    def on_external_command(self, command: str) -> None:
+        """Comandos do socket (thread estranha) → sinais Qt na UI."""
+        if command == "toggle":
+            self.bus.hotkey_toggle.emit()
+        elif command == "show":
+            self.bus.show_window.emit()
+
+    def _shortcut_label(self) -> str:
+        if gnome_shortcut.is_gnome():
+            return self.settings.shortcut if self.settings.gnome_shortcut else "desativado"
+        return self._pynput_label or "indisponível"
+
+    def _setup_global_shortcut(self) -> None:
+        """GNOME (inclusive Wayland): atalho personalizado → `voxtalk --toggle`.
+        Outros ambientes X11: pynput."""
+        if gnome_shortcut.is_gnome():
+            try:
+                if self.settings.gnome_shortcut:
+                    gnome_shortcut.register(
+                        self.settings.shortcut, gnome_shortcut.toggle_command()
+                    )
+                else:
+                    gnome_shortcut.unregister()
+            except Exception as exc:
+                self.bus.status.emit(f"Não foi possível registrar o atalho no GNOME: {exc}")
+            return
+        if self._hotkey is not None:
+            return
+        try:
+            from .hotkey import GlobalHotkey, hotkey_label
+        except Exception:
+            self.bus.status.emit("Atalho global indisponível (pynput não instalado).")
+            return
+        # pynput roda em outra thread — NUNCA chamar Qt direto dali
+        self._hotkey = GlobalHotkey(on_trigger=self._on_hotkey_from_listener)
+        self._hotkey.start()
+        self._pynput_label = hotkey_label()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -115,8 +157,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
 
         subtitle = QLabel(
-            f"Atalho global: {hotkey_label()} — pressione para gravar, de novo para transcrever."
+            "Atalho global — pressione para gravar, de novo para transcrever."
         )
+        self.subtitle = subtitle
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
@@ -256,6 +299,8 @@ class MainWindow(QMainWindow):
         self.bus.hotkey_toggle.connect(
             self.toggle_recording, Qt.QueuedConnection
         )
+        self.bus.show_window.connect(self._show_from_tray, Qt.QueuedConnection)
+        self.bus.injected.connect(self._on_injected, Qt.QueuedConnection)
 
     def _on_level(self, value: float) -> None:
         self.level_bar.setValue(int(value * 100))
@@ -278,21 +323,25 @@ class MainWindow(QMainWindow):
         self.auto_copy.setChecked(self.settings.auto_copy)
         self.auto_copy.blockSignals(False)
         self.engine_label.setText(ENGINE_LABELS.get(self.settings.engine, self.settings.engine))
+        self.subtitle.setText(
+            f"Atalho global: {self._shortcut_label()} — pressione para gravar, "
+            "de novo para transcrever."
+        )
 
     def _emit_ready_status(self) -> None:
         engine = ENGINE_LABELS.get(self.settings.engine, self.settings.engine)
         if self.settings.engine == "local":
             if model_ready(self.settings):
-                self.bus.status.emit(f"Pronto ({engine}). Atalho: {hotkey_label()}")
+                self.bus.status.emit(f"Pronto ({engine}). Atalho: {self._shortcut_label()}")
             else:
                 self.bus.status.emit(
                     f"Motor local sem modelo — abra Configurações para baixar (~670 MB). "
-                    f"Atalho: {hotkey_label()}"
+                    f"Atalho: {self._shortcut_label()}"
                 )
         else:
             self.bus.status.emit(
                 f"Pronto ({engine}). Precisa de internet + chave OpenAI. "
-                f"Atalho: {hotkey_label()}"
+                f"Atalho: {self._shortcut_label()}"
             )
 
     def _persist_ui_prefs(self) -> None:
@@ -311,8 +360,9 @@ class MainWindow(QMainWindow):
 
     def _on_settings_saved(self, settings: AppSettings) -> None:
         self.settings = settings
-        self._apply_settings_to_ui()
         self.transcriber.unload_local()
+        self._setup_global_shortcut()
+        self._apply_settings_to_ui()
         self._emit_ready_status()
 
     def _maybe_prompt_model_download(self) -> None:
@@ -344,7 +394,7 @@ class MainWindow(QMainWindow):
                     ),
                 )
                 self.bus.status.emit(
-                    f"Modelo local pronto. Atalho: {hotkey_label()}"
+                    f"Modelo local pronto. Atalho: {self._shortcut_label()}"
                 )
             except Exception as exc:
                 self.bus.error.emit(f"Falha ao baixar modelo: {exc}")
@@ -378,9 +428,12 @@ class MainWindow(QMainWindow):
 
     def _tray_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.Trigger:
-            self.showNormal()
-            self.raise_()
-            self.activateWindow()
+            self._show_from_tray()
+
+    def _show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
 
     def toggle_recording(self) -> None:
         if self._busy or self._preparing_model:
@@ -487,7 +540,10 @@ class MainWindow(QMainWindow):
         engine = ENGINE_LABELS.get(self.settings.engine, self.settings.engine)
         self.bubble.show_result(text)
         self.bus.status.emit(f"Pronto ({engine}). Idioma: {lang_name}")
-        if self.auto_copy.isChecked():
+        # Com a janela do VoxTalk em foco, colar cairia nela mesma
+        if self.settings.insert_into_focused and not self.isActiveWindow():
+            self._inject_async(text)
+        elif self.auto_copy.isChecked():
             try:
                 pyperclip.copy(text)
                 self.bubble.copy_btn.setText("Copiado!")
@@ -499,6 +555,33 @@ class MainWindow(QMainWindow):
                 pass
         # Mantém o balão um tempo para colar / revisar
         self._bubble_hide_timer.start(12_000)
+
+    def _inject_async(self, text: str) -> None:
+        combo = self.settings.paste_combo
+        restore = not self.auto_copy.isChecked()
+
+        def work() -> None:
+            try:
+                self._injector.inject(text, combo=combo, restore_clipboard=restore)
+                self.bus.injected.emit(True, "")
+            except InjectionUnavailable as exc:
+                self.bus.injected.emit(False, str(exc))
+            except Exception as exc:
+                self.bus.injected.emit(False, f"Falha ao inserir texto: {exc}")
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_injected(self, ok: bool, message: str) -> None:
+        if ok:
+            self.bubble.title.setText("Inserido ✓")
+            self.bus.status.emit("Texto inserido no app em foco.")
+            return
+        self.bubble.title.setText("Copiado ✓")
+        self.bus.status.emit(message)
+        if not self._inject_warned:
+            self._inject_warned = True
+            if hasattr(self, "tray"):
+                self.tray.showMessage("VoxTalk", message, QSystemTrayIcon.Warning, 6000)
 
     def _on_error(self, message: str) -> None:
         self._busy = False
@@ -522,7 +605,7 @@ class MainWindow(QMainWindow):
             self.hide()
             self.tray.showMessage(
                 "VoxTalk",
-                f"Continua em segundo plano. Atalho: {hotkey_label()}",
+                f"Continua em segundo plano. Atalho: {self._shortcut_label()}",
                 QSystemTrayIcon.Information,
                 2000,
             )
@@ -540,6 +623,7 @@ class MainWindow(QMainWindow):
             self.recorder.stop()
         if self._hotkey is not None:
             self._hotkey.stop()
+        self._injector.close()
 
 
 def run() -> None:
@@ -556,6 +640,19 @@ def run() -> None:
     palette.setColor(QPalette.WindowText, QColor("#e7ecf1"))
     app.setPalette(palette)
 
+    # Instância única: uma segunda execução só traz a janela existente para frente
+    socket_path = default_socket_path()
+    window: Optional[MainWindow] = None
+    server = InstanceServer(
+        socket_path,
+        lambda cmd: window.on_external_command(cmd) if window is not None else None,
+    )
+    if not server.start():
+        send_command("show", socket_path)
+        return
+
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
+    code = app.exec_()
+    server.stop()
+    sys.exit(code)

@@ -62,7 +62,7 @@ Priority: optional
 Architecture: ${ARCH}
 Installed-Size: ${INSTALLED_SIZE}
 Depends: python3 (>= 3.10), libportaudio2, libxcb-xinerama0
-Recommends: xclip | xsel, libnotify-bin
+Recommends: wl-clipboard, xclip | xsel, libnotify-bin
 Maintainer: VoxTalk <voxtalk@local>
 Description: Ditado por voz desktop (Parakeet local + OpenAI opcional)
  VoxTalk grava o microfone com o atalho F9 e transcreve a fala

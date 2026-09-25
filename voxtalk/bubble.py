@@ -34,8 +34,11 @@ class RecordingBubble(QWidget):
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
             | Qt.Tool
+            # Não roubar o foco: o texto é colado no app que estava em uso
+            | Qt.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setFixedWidth(self.WIDTH)
 
         self._fade = QPropertyAnimation(self, b"windowOpacity")
