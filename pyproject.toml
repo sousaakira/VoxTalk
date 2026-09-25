@@ -11,14 +11,17 @@ requires-python = ">=3.10"
 dependencies = [
   "sounddevice>=0.4.6",
   "numpy>=1.24.0",
-  "pynput>=1.7.6",
   "PyQt5>=5.15.0",
   "pyperclip>=1.8.2",
   "sherpa-onnx>=1.10.0",
 ]
 
+[project.optional-dependencies]
+x11 = ["pynput>=1.7.6"]
+test = ["pytest"]
+
 [project.scripts]
-voxtalk = "voxtalk.app:run"
+voxtalk = "voxtalk.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["voxtalk*"]

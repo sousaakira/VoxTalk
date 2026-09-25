@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 Engine = Literal["local", "openai"]
 OpenAiModel = Literal["gpt-4o-mini-transcribe", "gpt-4o-transcribe"]
+PasteCombo = Literal["ctrl+v", "ctrl+shift+v"]
 
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "voxtalk"
 CONFIG_PATH = CONFIG_DIR / "config.json"
@@ -30,6 +31,10 @@ class AppSettings:
     language: str = "pt-BR"
     auto_copy: bool = True
     models_dir: str = ""
+    insert_into_focused: bool = True
+    paste_combo: PasteCombo = "ctrl+v"
+    shortcut: str = "F9"  # formato de acelerador do GNOME: "F9", "<Super>h"…
+    gnome_shortcut: bool = True
 
     def resolved_models_dir(self) -> Path:
         raw = (self.models_dir or "").strip()
@@ -50,6 +55,10 @@ def _coerce(data: dict[str, Any]) -> AppSettings:
         "gpt-4o-transcribe",
     ):
         settings.openai_model = "gpt-4o-mini-transcribe"
+    if settings.paste_combo not in ("ctrl+v", "ctrl+shift+v"):
+        settings.paste_combo = "ctrl+v"
+    if not str(settings.shortcut).strip():
+        settings.shortcut = "F9"
     return settings
 
 

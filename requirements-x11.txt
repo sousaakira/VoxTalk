@@ -1,0 +1,2 @@
+# Atalho global fora do GNOME (X11). Precisa de python3-dev para compilar o evdev.
+pynput>=1.7.6
