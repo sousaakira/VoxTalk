@@ -68,7 +68,7 @@ Modelos em `~/.local/share/voxtalk/models/`.
 ```bash
 chmod +x packaging/build-deb.sh
 ./packaging/build-deb.sh
-sudo apt install ./dist/voxtalk_0.2.1_amd64.deb
+sudo apt install ./dist/voxtalk_0.2.2_amd64.deb
 ```
 
 ## Desenvolvimento

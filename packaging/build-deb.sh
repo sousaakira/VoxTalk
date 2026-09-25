@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${VOXTALK_VERSION:-0.2.1}"
+VERSION="${VOXTALK_VERSION:-0.2.2}"
 ARCH="$(dpkg --print-architecture)"
 PKG_NAME="voxtalk"
 DEB_NAME="${PKG_NAME}_${VERSION}_${ARCH}.deb"
@@ -62,7 +62,7 @@ Priority: optional
 Architecture: ${ARCH}
 Installed-Size: ${INSTALLED_SIZE}
 Depends: python3 (>= 3.10), libportaudio2, libxcb-xinerama0
-Recommends: wl-clipboard, xclip | xsel, libnotify-bin
+Recommends: wl-clipboard, xsel, xclip, libnotify-bin
 Maintainer: VoxTalk <voxtalk@local>
 Description: Ditado por voz desktop (Parakeet local + OpenAI opcional)
  VoxTalk grava o microfone com o atalho F9 e transcreve a fala

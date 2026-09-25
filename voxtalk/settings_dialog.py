@@ -96,8 +96,9 @@ class SettingsDialog(QDialog):
         form.addRow("Saída:", self.insert_check)
 
         self.paste_combo = QComboBox()
+        self.paste_combo.addItem("Automático (Ctrl+Shift+V em terminais)", "auto")
         self.paste_combo.addItem("Ctrl+V", "ctrl+v")
-        self.paste_combo.addItem("Ctrl+Shift+V (terminais)", "ctrl+shift+v")
+        self.paste_combo.addItem("Ctrl+Shift+V (sempre)", "ctrl+shift+v")
         pidx = self.paste_combo.findData(self._settings.paste_combo)
         self.paste_combo.setCurrentIndex(max(0, pidx))
         self.insert_check.toggled.connect(self.paste_combo.setEnabled)
